@@ -4,7 +4,7 @@
   "description": "CLI tool to scaffold GitHub Actions workflows into your project",
   "type": "module",
   "bin": {
-    "monolithx": "./index.js"
+    "monolithx": "./cli/index.js"
   },
   "keywords": [
     "github-actions",
@@ -22,5 +22,8 @@
   "files": [
     "index.js",
     "templates/**"
-  ]
+  ],
+  "dependencies": {
+    "@inquirer/prompts": "^8.2.1"
+  }
 }

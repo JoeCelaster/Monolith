@@ -2,7 +2,7 @@
 
 import fs from "fs";
 import path from "path";
-import inquirer from "inquirer";
+import { input, select, confirm } from "@inquirer/prompts";
 import { fileURLToPath } from "url";
 
 // --- Paths ---
@@ -51,55 +51,57 @@ async function main() {
   const cwd = process.cwd();
   const folderName = path.basename(cwd);
 
-  const answers = await inquirer.prompt([
-    {
-      type: "input",
-      name: "projectName",
-      message: "Project name:",
-      default: folderName,
-    },
-    {
-      type: "list",
-      name: "stack",
-      message: "Choose stack:",
-      choices: [
-        { name: "Node.js (Express)", value: "node" },
-        { name: "Java (Spring Boot)", value: "java" },
-        { name: "Python (FastAPI/Flask)", value: "python" },
-      ],
-      default: "node",
-    },
-    {
-      type: "input",
-      name: "prodBranch",
-      message: "Branch for production:",
-      default: "main",
-    },
-    {
-      type: "input",
-      name: "installCommand",
-      message: "Install command:",
-      default: (ans) => presets[ans.stack].installCommand,
-    },
-    {
-      type: "input",
-      name: "testCommand",
-      message: "Test command:",
-      default: (ans) => presets[ans.stack].testCommand,
-    },
-    {
-      type: "confirm",
-      name: "useDocker",
-      message: "Use Docker for build & deploy?",
-      default: true,
-    },
-    {
-      type: "input",
-      name: "migrationCommand",
-      message: "Migration command (leave empty for none):",
-      default: "",
-    },
-  ]);
+  const projectName = await input({
+  message: "Project name:",
+  default: folderName,
+});
+
+const stack = await select({
+  message: "Choose stack:",
+  choices: [
+    { name: "Node.js (Express)", value: "node" },
+    { name: "Java (Spring Boot)", value: "java" },
+    { name: "Python (FastAPI/Flask)", value: "python" },
+  ],
+  pageSize: 3,
+  loop: false,
+});
+
+const prodBranch = await input({
+  message: "Branch for production:",
+  default: "main",
+});
+
+const installCommand = await input({
+  message: "Install command:",
+  default: presets[stack].installCommand,
+});
+
+const testCommand = await input({
+  message: "Test command:",
+  default: presets[stack].testCommand,
+});
+
+const useDocker = await confirm({
+  message: "Use Docker for build & deploy?",
+  default: true,
+});
+
+const migrationCommand = await input({
+  message: "Migration command (leave empty for none):",
+  default: "",
+});
+
+// Build the same answers object you were using
+const answers = {
+  projectName,
+  stack,
+  prodBranch,
+  installCommand,
+  testCommand,
+  useDocker,
+  migrationCommand,
+};
 
   const preset = presets[answers.stack];
 
