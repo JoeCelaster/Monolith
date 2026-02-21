@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="Monolith"
-PORT="8080"
+PORT="3000"
 
 echo "🔁 Rolling back $APP_NAME to previous version..."
 

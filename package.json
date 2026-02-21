@@ -20,8 +20,9 @@
     "node": ">=14.0.0"
   },
   "files": [
-    "index.js",
-    "templates/**"
+    "cli/**",
+    "templates/**",
+    "index.js"
   ],
   "dependencies": {
     "@inquirer/prompts": "^8.2.1"

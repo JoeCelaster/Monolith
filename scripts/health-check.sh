@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-PORT="8080"
+PORT="3000"
 HEALTH_URL="http://localhost:$PORT/health"
 
 echo "🩺 Running health check at $HEALTH_URL ..."
