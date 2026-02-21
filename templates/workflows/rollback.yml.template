@@ -2,16 +2,44 @@ name: Rollback
 
 on:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Exact image SHA to roll back to (get from Build & Push job history)"
+        required: true
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production"
+        type: choice
+        options: [staging, production]
 
 jobs:
   rollback:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set execute permissions
-        run: chmod +x scripts/*.sh
+      - name: Roll back ${{ github.event.inputs.environment }} to ${{ github.event.inputs.image_tag }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ github.event.inputs.environment == 'production' && secrets.PROD_HOST || secrets.STAGING_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export APP_NAME={{APP_NAME}}
+            export PORT={{PORT}}
+            export IMAGE_TAG=${{ github.event.inputs.image_tag }}
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            bash /opt/scripts/{{APP_NAME}}/rollback.sh
 
-      - name: Rollback
-        run: bash scripts/rollback.sh
+      - name: Verify service is healthy after rollback
+        run: |
+          chmod +x scripts/health-check.sh
+          TARGET_HOST=${{ github.event.inputs.environment == 'production' && secrets.PROD_HOST || secrets.STAGING_HOST }}
+          HEALTH_HOST=${TARGET_HOST} \
+          PORT={{PORT}} \
+          HEALTH_PATH={{HEALTH_PATH}} \
+          bash scripts/health-check.sh

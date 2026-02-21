@@ -1,22 +1,34 @@
 #!/usr/bin/env bash
-set -e
+# deploy.sh — Runs on the target server via SSH from CI.
+# Required env vars: APP_NAME, PORT, IMAGE_TAG, REGISTRY, IMAGE_NAME, ENV_FILE
+set -euo pipefail
 
-APP_NAME="{{APP_NAME}}"
-PORT="{{PORT}}"
+echo "🚀 Deploying ${APP_NAME} — image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-echo "🚀 Deploying $APP_NAME..."
+FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
-# Save current image as previous (best-effort)
-docker tag {{IMAGE_NAME}}:latest {{IMAGE_NAME}}:previous || true
+# Pull the exact immutable image from the registry
+docker pull "${FULL_IMAGE}"
 
-# Stop and remove existing container (if any)
-docker stop "$APP_NAME" || true
-docker rm "$APP_NAME" || true
+# Record the currently-running image before overwriting it (for rollback)
+PREV_TAG_FILE="/opt/scripts/{{APP_NAME}}/.previous_tag"
+mkdir -p "$(dirname "${PREV_TAG_FILE}")"
+docker inspect --format='{{.Config.Image}}' "${APP_NAME}" 2>/dev/null \
+  > "${PREV_TAG_FILE}" || echo "none" > "${PREV_TAG_FILE}"
 
-# Run the new container
+# Stop and remove the existing container
+docker stop "${APP_NAME}" 2>/dev/null || true
+docker rm   "${APP_NAME}" 2>/dev/null || true
+
+# Start the new container
 docker run -d \
-  --name "$APP_NAME" \
-  -p "$PORT:$PORT" \
-  {{IMAGE_NAME}}:latest
+  --name "${APP_NAME}" \
+  --restart unless-stopped \
+  -p "${PORT}:${PORT}" \
+  --env-file "${ENV_FILE}" \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  "${FULL_IMAGE}"
 
-echo "✅ New version started for $APP_NAME"
+echo "✅ ${APP_NAME} is running → ${FULL_IMAGE}"

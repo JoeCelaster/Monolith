@@ -3,15 +3,31 @@ name: Build (Basic)
 on:
   workflow_run:
     workflows: ["CI"]
+    branches:
+      - "{{PROD_BRANCH}}"
+      - "{{STAGING_BRANCH}}"
     types: [completed]
 
 jobs:
   build:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Build project
         run: {{BUILD_COMMAND}}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ github.event.workflow_run.head_sha }}
+          path: dist/
+          if-no-files-found: warn
+          retention-days: 14

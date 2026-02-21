@@ -1,11 +1,31 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
+
+# System deps needed at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
 WORKDIR /app
 
+# Install Python deps (cached layer)
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy application source
+COPY --chown=appuser:appgroup . .
 
+USER appuser
 EXPOSE {{PORT}}
 
-CMD ["python", "main.py"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -fsS http://localhost:{{PORT}}/health || exit 1
+
+# Use gunicorn + uvicorn for production ASGI/WSGI serving
+CMD ["gunicorn", "main:app", "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:{{PORT}}", \
+     "--workers", "2", \
+     "--timeout", "30", \
+     "--access-logfile", "-"]

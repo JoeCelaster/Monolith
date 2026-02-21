@@ -2,10 +2,12 @@
   "stack": "python",
   "name": "Python (FastAPI/Flask)",
   "defaultPort": 8000,
+  "runtimeVersion": "3.11",
   "installCommand": "pip install -r requirements.txt",
-  "testCommand": "pytest",
-  "buildCommand": "echo \"No build step for Python\"",
-  "startCommand": "python main.py",
+  "lintCommand": "ruff check . || flake8 . || true",
+  "testCommand": "pytest --tb=short -q",
+  "buildCommand": "echo 'No separate build step for Python'",
+  "startCommand": "gunicorn main:app -k uvicorn.workers.UvicornWorker",
   "dockerImageBaseName": "python-app",
   "healthPath": "/health"
 }

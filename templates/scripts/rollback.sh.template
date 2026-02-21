@@ -1,19 +1,46 @@
 #!/usr/bin/env bash
-set -e
+# rollback.sh — Runs on the target server via SSH from CI.
+# Required env vars: APP_NAME, PORT, IMAGE_TAG, REGISTRY, IMAGE_NAME
+# Set IMAGE_TAG="previous" to reuse the saved pre-deploy image,
+# or set it to an explicit SHA to roll back to a specific release.
+set -euo pipefail
 
-APP_NAME="{{APP_NAME}}"
-PORT="{{PORT}}"
+PREV_TAG_FILE="/opt/scripts/{{APP_NAME}}/.previous_tag"
 
-echo "🔁 Rolling back $APP_NAME to previous version..."
+if [ "${IMAGE_TAG}" = "previous" ]; then
+  if [ ! -f "${PREV_TAG_FILE}" ] || [ -z "$(cat "${PREV_TAG_FILE}")" ]; then
+    echo "❌ No saved previous tag found at ${PREV_TAG_FILE}. Cannot roll back."
+    exit 1
+  fi
+  FULL_IMAGE=$(cat "${PREV_TAG_FILE}")
+  echo "🔁 Rolling back ${APP_NAME} to saved previous image: ${FULL_IMAGE}"
+else
+  FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+  echo "🔁 Rolling back ${APP_NAME} to explicit image: ${FULL_IMAGE}"
+fi
 
-# Stop and remove current container
-docker stop "$APP_NAME" || true
-docker rm "$APP_NAME" || true
+# Pull the target image from the registry
+docker pull "${FULL_IMAGE}"
 
-# Start previous image
+# Detect env-file path based on hostname pattern
+if echo "$(hostname)" | grep -qiE 'prod|production'; then
+  ENV_FILE="/etc/{{APP_NAME}}/production.env"
+else
+  ENV_FILE="/etc/{{APP_NAME}}/staging.env"
+fi
+
+# Swap containers
+docker stop "${APP_NAME}" 2>/dev/null || true
+docker rm   "${APP_NAME}" 2>/dev/null || true
+
 docker run -d \
-  --name "$APP_NAME" \
-  -p "$PORT:$PORT" \
-  {{IMAGE_NAME}}:previous
+  --name "${APP_NAME}" \
+  --restart unless-stopped \
+  -p "${PORT}:${PORT}" \
+  --env-file "${ENV_FILE}" \
+  --log-driver json-file \
+  --log-opt max-size=50m \
+  --log-opt max-file=5 \
+  "${FULL_IMAGE}"
 
-echo "✅ Rollback complete for $APP_NAME"
+echo "✅ Rollback complete → ${FULL_IMAGE}"
