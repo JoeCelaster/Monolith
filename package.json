@@ -1,0 +1,26 @@
+{
+  "name": "mono-lith",
+  "version": "1.0.0",
+  "description": "CLI tool to scaffold GitHub Actions workflows into your project",
+  "type": "module",
+  "bin": {
+    "mono-lith": "./index.js"
+  },
+  "keywords": [
+    "github-actions",
+    "ci",
+    "cd",
+    "scaffold",
+    "cli",
+    "workflows"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "index.js",
+    "templates/**"
+  ]
+}
