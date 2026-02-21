@@ -69,7 +69,7 @@ function copyFile(src, dest) {
 
 function main() {
   console.log();
-  log(bold("mono-lith") + " — GitHub Actions workflow scaffolder");
+  log(bold("monolithx") + " — GitHub Actions workflow scaffolder");
   console.log();
 
   // Validate templates directory exists inside the package
