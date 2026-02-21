@@ -1,10 +1,10 @@
 {
-  "name": "mono-lith",
+  "name": "monolithx",
   "version": "1.0.0",
   "description": "CLI tool to scaffold GitHub Actions workflows into your project",
   "type": "module",
   "bin": {
-    "mono-lith": "./index.js"
+    "monolithx": "./index.js"
   },
   "keywords": [
     "github-actions",
