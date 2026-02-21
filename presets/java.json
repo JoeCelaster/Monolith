@@ -1,0 +1,11 @@
+{
+  "stack": "java",
+  "name": "Java (Spring Boot)",
+  "defaultPort": 8080,
+  "installCommand": "mvn clean package",
+  "testCommand": "mvn test",
+  "buildCommand": "mvn package",
+  "startCommand": "java -jar target/app.jar",
+  "dockerImageBaseName": "java-app",
+  "healthPath": "/actuator/health"
+}

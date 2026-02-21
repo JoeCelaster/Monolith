@@ -1,0 +1,11 @@
+{
+  "stack": "node",
+  "name": "Node.js (Express)",
+  "defaultPort": 3000,
+  "installCommand": "npm install",
+  "testCommand": "npm test",
+  "buildCommand": "npm run build",
+  "startCommand": "npm start",
+  "dockerImageBaseName": "node-app",
+  "healthPath": "/health"
+}
