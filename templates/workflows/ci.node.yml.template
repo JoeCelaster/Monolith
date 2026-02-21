@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js {{RUNTIME_VERSION}}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "{{RUNTIME_VERSION}}"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: {{INSTALL_COMMAND}}
+
+      - name: Lint
+        run: {{LINT_COMMAND}}
+
+      - name: Run tests
+        run: {{TEST_COMMAND}}

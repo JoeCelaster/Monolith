@@ -1,26 +1,177 @@
 name: Deploy
 
 on:
-  push:
+  # Automatically triggered by the Build & Push workflow on prod/staging branches
+  workflow_run:
+    workflows: ["Build & Push"]
     branches:
-      - {{PROD_BRANCH}}
+      - "{{PROD_BRANCH}}"
+      - "{{STAGING_BRANCH}}"
+    types: [completed]
+  # Manual deployment / re-deploy with explicit image tag
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Exact image SHA tag to deploy (required for manual)"
+        required: true
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, production]
 
 jobs:
-  deploy:
+  # ── Staging ─────────────────────────────────────────────────────────────────
+  deploy-staging:
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == '{{STAGING_BRANCH}}') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.environment == 'staging')
     runs-on: ubuntu-latest
+    environment: staging
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set execute permissions
-        run: chmod +x scripts/*.sh
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "image_tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "image_tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          fi
 
-      # Optional gated migration step (CLI can remove this block if none)
-      - name: Run migrations
-        run: {{MIGRATION_COMMAND}}
+      - name: Run migrations (staging)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            export IMAGE_TAG=${{ steps.tag.outputs.image_tag }}
+            docker pull ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+            docker run --rm \
+              --env-file /etc/{{APP_NAME}}/staging.env \
+              ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} \
+              {{MIGRATION_COMMAND}}
 
-      - name: Deploy
-        run: bash scripts/deploy.sh
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export APP_NAME={{APP_NAME}}
+            export PORT={{PORT}}
+            export IMAGE_TAG=${{ steps.tag.outputs.image_tag }}
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            export ENV_FILE=/etc/{{APP_NAME}}/staging.env
+            bash /opt/scripts/{{APP_NAME}}/deploy.sh
 
-      - name: Health check
-        run: bash scripts/health-check.sh
+      - name: Health check (staging)
+        run: |
+          chmod +x scripts/health-check.sh
+          HEALTH_HOST=${{ secrets.STAGING_HOST }} \
+          PORT={{PORT}} \
+          HEALTH_PATH={{HEALTH_PATH}} \
+          bash scripts/health-check.sh
+
+      - name: Auto-rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export APP_NAME={{APP_NAME}}
+            export PORT={{PORT}}
+            export IMAGE_TAG=previous
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            bash /opt/scripts/{{APP_NAME}}/rollback.sh
+
+  # ── Production ──────────────────────────────────────────────────────────────
+  deploy-production:
+    if: |
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == '{{PROD_BRANCH}}') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.environment == 'production')
+    runs-on: ubuntu-latest
+    environment: production  # requires manual approval gate in GitHub Environments settings
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "image_tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "image_tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run migrations (production)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            export IMAGE_TAG=${{ steps.tag.outputs.image_tag }}
+            docker pull ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+            docker run --rm \
+              --env-file /etc/{{APP_NAME}}/production.env \
+              ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} \
+              {{MIGRATION_COMMAND}}
+
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export APP_NAME={{APP_NAME}}
+            export PORT={{PORT}}
+            export IMAGE_TAG=${{ steps.tag.outputs.image_tag }}
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            export ENV_FILE=/etc/{{APP_NAME}}/production.env
+            bash /opt/scripts/{{APP_NAME}}/deploy.sh
+
+      - name: Health check (production)
+        run: |
+          chmod +x scripts/health-check.sh
+          HEALTH_HOST=${{ secrets.PROD_HOST }} \
+          PORT={{PORT}} \
+          HEALTH_PATH={{HEALTH_PATH}} \
+          bash scripts/health-check.sh
+
+      - name: Auto-rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            export APP_NAME={{APP_NAME}}
+            export PORT={{PORT}}
+            export IMAGE_TAG=previous
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}
+            export IMAGE_NAME={{IMAGE_NAME}}
+            bash /opt/scripts/{{APP_NAME}}/rollback.sh

@@ -2,9 +2,11 @@
   "stack": "node",
   "name": "Node.js (Express)",
   "defaultPort": 3000,
-  "installCommand": "npm install",
+  "runtimeVersion": "20",
+  "installCommand": "npm ci",
+  "lintCommand": "npm run lint --if-present",
   "testCommand": "npm test",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build --if-present",
   "startCommand": "npm start",
   "dockerImageBaseName": "node-app",
   "healthPath": "/health"

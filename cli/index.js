@@ -5,18 +5,17 @@ import path from "path";
 import { input, select, confirm } from "@inquirer/prompts";
 import { fileURLToPath } from "url";
 
-// --- Paths ---
+// ─── Paths ───────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname  = path.dirname(__filename);
 
-const ROOT = path.resolve(__dirname, "..");
-const PRESETS_DIR = path.join(ROOT, "presets");
+const ROOT         = path.resolve(__dirname, "..");
+const PRESETS_DIR  = path.join(ROOT, "presets");
 const TEMPLATES_DIR = path.join(ROOT, "templates");
 
-// --- Helpers ---
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function readTemplate(relPath) {
-  const p = path.join(TEMPLATES_DIR, relPath);
-  return fs.readFileSync(p, "utf8");
+  return fs.readFileSync(path.join(TEMPLATES_DIR, relPath), "utf8");
 }
 
 function writeFile(targetPath, content) {
@@ -34,165 +33,232 @@ function replacePlaceholders(str, vars) {
 }
 
 function makeExecutable(p) {
-  try {
-    fs.chmodSync(p, 0o755);
-  } catch {}
+  try { fs.chmodSync(p, 0o755); } catch { /* Windows – ignore */ }
 }
 
-// --- Load presets ---
+/**
+ * Remove named YAML step blocks from a workflow template string.
+ * Removes every block starting at a line matching `stepNamePattern`
+ * up to (but not including) the next `      - name:` sibling step or end of job.
+ */
+function removeStepBlock(yaml, stepNamePattern) {
+  const lines = yaml.split("\n");
+  const result = [];
+  let skipping = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().match(stepNamePattern)) {
+      skipping = true;
+    } else if (skipping && line.match(/^      - (name:|uses:|run:)/)) {
+      skipping = false;
+    }
+    if (!skipping) result.push(line);
+  }
+  return result.join("\n");
+}
+
+// ─── Load presets ────────────────────────────────────────────────────────────
 const presets = {
-  node: JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, "node.json"), "utf8")),
-  java: JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, "java.json"), "utf8")),
+  node:   JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, "node.json"),   "utf8")),
+  java:   JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, "java.json"),   "utf8")),
   python: JSON.parse(fs.readFileSync(path.join(PRESETS_DIR, "python.json"), "utf8")),
 };
 
-// --- CLI ---
+// ─── CLI ─────────────────────────────────────────────────────────────────────
 async function main() {
-  const cwd = process.cwd();
+  const cwd        = process.cwd();
   const folderName = path.basename(cwd);
 
+  console.log("\n🧱  Monolith — Production-Ready CI/CD Scaffolder\n");
+
   const projectName = await input({
-  message: "Project name:",
-  default: folderName,
-});
+    message: "Project name:",
+    default: folderName,
+  });
 
-const stack = await select({
-  message: "Choose stack:",
-  choices: [
-    { name: "Node.js (Express)", value: "node" },
-    { name: "Java (Spring Boot)", value: "java" },
-    { name: "Python (FastAPI/Flask)", value: "python" },
-  ],
-  pageSize: 3,
-  loop: false,
-});
+  const stack = await select({
+    message: "Choose stack:",
+    choices: [
+      { name: "Node.js (Express / Next.js)", value: "node"   },
+      { name: "Java (Spring Boot)",           value: "java"   },
+      { name: "Python (FastAPI / Flask)",     value: "python" },
+    ],
+    pageSize: 3,
+    loop: false,
+  });
 
-const prodBranch = await input({
-  message: "Branch for production:",
-  default: "main",
-});
+  const preset = presets[stack];
 
-const installCommand = await input({
-  message: "Install command:",
-  default: presets[stack].installCommand,
-});
+  const prodBranch = await input({
+    message: "Production branch:",
+    default: "main",
+  });
 
-const testCommand = await input({
-  message: "Test command:",
-  default: presets[stack].testCommand,
-});
+  const stagingBranch = await input({
+    message: "Staging branch:",
+    default: "staging",
+  });
 
-const useDocker = await confirm({
-  message: "Use Docker for build & deploy?",
-  default: true,
-});
+  const installCommand = await input({
+    message: "Install command:",
+    default: preset.installCommand,
+  });
 
-const migrationCommand = await input({
-  message: "Migration command (leave empty for none):",
-  default: "",
-});
+  const lintCommand = await input({
+    message: "Lint command:",
+    default: preset.lintCommand,
+  });
 
-// Build the same answers object you were using
-const answers = {
-  projectName,
-  stack,
-  prodBranch,
-  installCommand,
-  testCommand,
-  useDocker,
-  migrationCommand,
-};
+  const testCommand = await input({
+    message: "Test command:",
+    default: preset.testCommand,
+  });
 
-  const preset = presets[answers.stack];
+  const useDocker = await confirm({
+    message: "Use Docker for build & deploy? (recommended for production)",
+    default: true,
+  });
+
+  const migrationCommand = await input({
+    message: "Migration command (leave empty to skip migration step):",
+    default: "",
+  });
+
+  // ─── Build variable map ──────────────────────────────────────────────────
+  const imageName = projectName.toLowerCase().replace(/[^a-z0-9-_]/g, "");
 
   const vars = {
-    APP_NAME: answers.projectName,
-    IMAGE_NAME: answers.projectName.toLowerCase().replace(/[^a-z0-9-_]/g, ""),
-    PORT: String(preset.defaultPort || 3000),
-    INSTALL_COMMAND: answers.installCommand,
-    TEST_COMMAND: answers.testCommand,
-    BUILD_COMMAND: preset.buildCommand || "echo \"No build step\"",
-    PROD_BRANCH: answers.prodBranch,
-    MIGRATION_COMMAND: answers.migrationCommand,
+    APP_NAME:          projectName,
+    IMAGE_NAME:        imageName,
+    PORT:              String(preset.defaultPort || 3000),
+    RUNTIME_VERSION:   preset.runtimeVersion || "latest",
+    INSTALL_COMMAND:   installCommand,
+    LINT_COMMAND:      lintCommand,
+    TEST_COMMAND:      testCommand,
+    BUILD_COMMAND:     preset.buildCommand || `echo "No build step"`,
+    PROD_BRANCH:       prodBranch,
+    STAGING_BRANCH:    stagingBranch,
+    MIGRATION_COMMAND: migrationCommand.trim(),
+    HEALTH_PATH:       preset.healthPath || "/health",
   };
 
-  // --- Generate workflows ---
   const workflowsOut = path.join(cwd, ".github", "workflows");
+  const scriptsOut   = path.join(cwd, "scripts");
 
-  // CI
-  let ciTpl = readTemplate("workflows/ci.yml.template");
-  let ciYml = replacePlaceholders(ciTpl, vars);
-  writeFile(path.join(workflowsOut, "ci.yml"), ciYml);
+  // ─── Generate: CI workflow (stack-specific for proper runtime setup) ─────
+  const ciTplName = `workflows/ci.${stack}.yml.template`;
+  writeFile(
+    path.join(workflowsOut, "ci.yml"),
+    replacePlaceholders(readTemplate(ciTplName), vars)
+  );
 
-  // Build
-  if (answers.useDocker) {
-    let buildTpl = readTemplate("workflows/build.docker.yml.template");
-    let buildYml = replacePlaceholders(buildTpl, vars);
-    writeFile(path.join(workflowsOut, "build.yml"), buildYml);
-  } else {
-    let buildTpl = readTemplate("workflows/build.basic.yml.template");
-    let buildYml = replacePlaceholders(buildTpl, vars);
-    writeFile(path.join(workflowsOut, "build.yml"), buildYml);
-  }
+  // ─── Generate: Build workflow ─────────────────────────────────────────────
+  const buildTplName = useDocker
+    ? "workflows/build.docker.yml.template"
+    : "workflows/build.basic.yml.template";
+  writeFile(
+    path.join(workflowsOut, "build.yml"),
+    replacePlaceholders(readTemplate(buildTplName), vars)
+  );
 
-  // Deploy (handle optional migration step)
+  // ─── Generate: Deploy workflow (strip migration blocks when not needed) ───
   let deployTpl = readTemplate("workflows/deploy.yml.template");
-  if (!answers.migrationCommand || !answers.migrationCommand.trim()) {
-    // remove the migration step block (simple approach: remove lines containing MIGRATION_COMMAND)
-    deployTpl = deployTpl
-      .split("\n")
-      .filter((line) => !line.includes("MIGRATION_COMMAND") && !line.toLowerCase().includes("run migrations"))
-      .join("\n");
+  if (!vars.MIGRATION_COMMAND) {
+    // Remove the "Run migrations (staging)" and "Run migrations (production)" step blocks
+    deployTpl = removeStepBlock(deployTpl, /^- name: Run migrations/);
   }
-  let deployYml = replacePlaceholders(deployTpl, vars);
-  writeFile(path.join(workflowsOut, "deploy.yml"), deployYml);
+  writeFile(
+    path.join(workflowsOut, "deploy.yml"),
+    replacePlaceholders(deployTpl, vars)
+  );
 
-  // Rollback
-  let rollbackTpl = readTemplate("workflows/rollback.yml.template");
-  let rollbackYml = replacePlaceholders(rollbackTpl, vars);
-  writeFile(path.join(workflowsOut, "rollback.yml"), rollbackYml);
+  // ─── Generate: Rollback workflow ──────────────────────────────────────────
+  writeFile(
+    path.join(workflowsOut, "rollback.yml"),
+    replacePlaceholders(readTemplate("workflows/rollback.yml.template"), vars)
+  );
 
-  // --- Scripts ---
-  const scriptsOut = path.join(cwd, "scripts");
-  const deploySh = replacePlaceholders(readTemplate("scripts/deploy.sh.template"), vars);
-  const rollbackSh = replacePlaceholders(readTemplate("scripts/rollback.sh.template"), vars);
-  const healthSh = replacePlaceholders(readTemplate("scripts/health-check.sh.template"), vars);
+  // ─── Generate: Security scan workflow ────────────────────────────────────
+  writeFile(
+    path.join(workflowsOut, "security-scan.yml"),
+    replacePlaceholders(readTemplate("workflows/security-scan.yml.template"), vars)
+  );
 
-  writeFile(path.join(scriptsOut, "deploy.sh"), deploySh);
-  writeFile(path.join(scriptsOut, "rollback.sh"), rollbackSh);
-  writeFile(path.join(scriptsOut, "health-check.sh"), healthSh);
+  // ─── Generate: Shell scripts ──────────────────────────────────────────────
+  const scripts = [
+    ["scripts/deploy.sh.template",        "deploy.sh"      ],
+    ["scripts/rollback.sh.template",      "rollback.sh"    ],
+    ["scripts/health-check.sh.template",  "health-check.sh"],
+  ];
 
-  makeExecutable(path.join(scriptsOut, "deploy.sh"));
-  makeExecutable(path.join(scriptsOut, "rollback.sh"));
-  makeExecutable(path.join(scriptsOut, "health-check.sh"));
-
-  // --- Dockerfile (optional) ---
-  if (answers.useDocker) {
-    let dockerTplName =
-      answers.stack === "java"
-        ? "docker/Dockerfile.java.template"
-        : answers.stack === "python"
-        ? "docker/Dockerfile.python.template"
-        : "docker/Dockerfile.node.template";
-
-    let dockerTpl = readTemplate(dockerTplName);
-    let dockerfile = replacePlaceholders(dockerTpl, vars);
-    writeFile(path.join(cwd, "Dockerfile"), dockerfile);
+  for (const [tplRel, outName] of scripts) {
+    const destPath = path.join(scriptsOut, outName);
+    writeFile(destPath, replacePlaceholders(readTemplate(tplRel), vars));
+    makeExecutable(destPath);
   }
 
-  console.log("\n✅ Monolith added CI/CD to your project!");
-  console.log("📁 Generated:");
-  console.log("  - .github/workflows/{ci,build,deploy,rollback}.yml");
-  console.log("  - scripts/{deploy,rollback,health-check}.sh");
-  if (answers.useDocker) console.log("  - Dockerfile");
-  console.log("\n➡️ Next steps:");
-  console.log("  1) git add .");
-  console.log('  2) git commit -m "Add Monolith CI/CD"');
-  console.log("  3) git push");
-  console.log("\nEvery push will now run CI, build, deploy, and allow rollback. 🚀");
+  // ─── Generate: Dockerfile + .dockerignore ────────────────────────────────
+  if (useDocker) {
+    const dockerTplName = `docker/Dockerfile.${stack}.template`;
+    writeFile(
+      path.join(cwd, "Dockerfile"),
+      replacePlaceholders(readTemplate(dockerTplName), vars)
+    );
+
+    // Only write .dockerignore if one doesn't already exist
+    const dockerignorePath = path.join(cwd, ".dockerignore");
+    if (!fs.existsSync(dockerignorePath)) {
+      writeFile(
+        dockerignorePath,
+        readTemplate("docker/.dockerignore.template")
+      );
+    }
+  }
+
+  // ─── Summary ──────────────────────────────────────────────────────────────
+  console.log("\n✅  Monolith scaffolded your production CI/CD pipeline!\n");
+  console.log("📁 Generated files:");
+  console.log("  .github/workflows/");
+  console.log("    ci.yml               ← lint + test on every push/PR");
+  console.log("    build.yml            ← " + (useDocker ? "Docker build→push to GHCR + Trivy scan" : "build artifact upload"));
+  console.log("    deploy.yml           ← staging (auto) → production (approval gate)");
+  console.log("    rollback.yml         ← manual rollback to any SHA");
+  console.log("    security-scan.yml    ← weekly Trivy FS + Gitleaks secret scan");
+  console.log("  scripts/");
+  console.log("    deploy.sh            ← SSH server-side: pull GHCR image & restart");
+  console.log("    rollback.sh          ← SSH server-side: restore exact previous image");
+  console.log("    health-check.sh      ← poll " + vars.HEALTH_PATH + " until 2xx or timeout");
+  if (useDocker) {
+    console.log("  Dockerfile             ← multi-stage, non-root, HEALTHCHECK");
+    console.log("  .dockerignore          ← excludes secrets, node_modules, .git…");
+  }
+
+  console.log("\n🔐  GitHub Secrets required (Settings → Secrets → Actions):");
+  console.log("  PROD_HOST          Your production server IP / hostname");
+  console.log("  STAGING_HOST       Your staging server IP / hostname");
+  console.log("  DEPLOY_USER        SSH username on both servers");
+  console.log("  DEPLOY_SSH_KEY     Private SSH key (matching authorized_keys on servers)");
+
+  console.log("\n🏗️  GitHub Environments required (Settings → Environments):");
+  console.log("  staging     — no approval needed (auto-deployed)");
+  console.log("  production  — add required reviewers for manual approval gate");
+
+  console.log("\n📋  Server setup (run once per server):");
+  console.log(`  mkdir -p /opt/scripts/${imageName}`);
+  console.log(`  mkdir -p /etc/${projectName}`);
+  console.log(`  # Place staging.env / production.env in /etc/${projectName}/`);
+  console.log(`  # Copy deploy.sh & rollback.sh to /opt/scripts/${imageName}/`);
+
+  console.log("\n➡️  Next steps:");
+  console.log("  1. git add .");
+  console.log('  2. git commit -m "chore: add Monolith production CI/CD"');
+  console.log("  3. git push  —  CI runs immediately on every branch");
+  console.log("  4. Merge to", stagingBranch, "→ auto-deploys to staging");
+  console.log("  5. Merge to", prodBranch, "→ requests production approval → deploys\n");
 }
 
 main().catch((err) => {
-  console.error("❌ Error:", err);
+  console.error("❌ Error:", err.message ?? err);
   process.exit(1);
 });

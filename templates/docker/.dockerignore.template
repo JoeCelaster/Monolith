@@ -1,0 +1,49 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# CI / editor tooling
+.github
+.vscode
+.idea
+*.md
+*.txt
+
+# Node
+node_modules/
+npm-debug.log*
+.npm
+.cache
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Java
+target/
+*.class
+.mvn/
+*.log
+
+# Env / secrets — NEVER bake into image
+.env
+.env.*
+secrets/
+*.pem
+*.key
+
+# Docker artifacts
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Local scripts (not needed inside the image)
+scripts/
