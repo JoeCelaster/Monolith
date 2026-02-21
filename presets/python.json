@@ -1,0 +1,11 @@
+{
+  "stack": "python",
+  "name": "Python (FastAPI/Flask)",
+  "defaultPort": 8000,
+  "installCommand": "pip install -r requirements.txt",
+  "testCommand": "pytest",
+  "buildCommand": "echo \"No build step for Python\"",
+  "startCommand": "python main.py",
+  "dockerImageBaseName": "python-app",
+  "healthPath": "/health"
+}
