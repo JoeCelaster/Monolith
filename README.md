@@ -4,4 +4,4 @@ Monolith is a lightweight CI/CD runner that lets you connect a GitHub repository
 
 It focuses on one thing:
 
-✅ Automated, repeatable, and safe builds & deployments with one click.
+✅ Automated, repeatable, and safe builds & deployments with one click
