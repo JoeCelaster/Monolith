@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -e
+
+APP_NAME="{{APP_NAME}}"
+PORT="{{PORT}}"
+
+echo "🚀 Deploying $APP_NAME..."
+
+# Save current image as previous (best-effort)
+docker tag {{IMAGE_NAME}}:latest {{IMAGE_NAME}}:previous || true
+
+# Stop and remove existing container (if any)
+docker stop "$APP_NAME" || true
+docker rm "$APP_NAME" || true
+
+# Run the new container
+docker run -d \
+  --name "$APP_NAME" \
+  -p "$PORT:$PORT" \
+  {{IMAGE_NAME}}:latest
+
+echo "✅ New version started for $APP_NAME"
