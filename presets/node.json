@@ -5,7 +5,7 @@
   "runtimeVersion": "20",
   "installCommand": "npm ci",
   "lintCommand": "npm run lint --if-present",
-  "testCommand": "npm test",
+  "testCommand": "npm test --if-present",
   "buildCommand": "npm run build --if-present",
   "startCommand": "npm start",
   "dockerImageBaseName": "node-app",
