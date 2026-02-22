@@ -27,12 +27,7 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm install --prefer-offline --no-audit --no-fund
 
       - name: Lint
         continue-on-error: true   # Non-blocking: projects without a lint script still pass CI

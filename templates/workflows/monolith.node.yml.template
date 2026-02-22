@@ -52,15 +52,9 @@ jobs:
           cache-dependency-path: "**/package-lock.json"
 
       # ── 3. Install dependencies ───────────────────────────────────────────────
-      # Uses npm ci when a lockfile exists (reproducible), falls back to npm install.
       - name: Install dependencies
         working-directory: ${{ env.WORK_DIR }}
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm install --prefer-offline --no-audit --no-fund
 
       # ── 4. Lint ───────────────────────────────────────────────────────────────
       - name: Lint
