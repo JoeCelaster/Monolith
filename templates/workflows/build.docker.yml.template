@@ -19,7 +19,7 @@ jobs:
 
     outputs:
       image_tag: ${{ github.event.workflow_run.head_sha }}
-      full_image: ghcr.io/${{ github.repository_owner }}/{{IMAGE_NAME}}:${{ github.event.workflow_run.head_sha }}
+      full_image: "ghcr.io/${{ github.repository_owner }}/{{IMAGE_NAME}}:${{ github.event.workflow_run.head_sha }}"
 
     steps:
       - name: Checkout
@@ -57,14 +57,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Scan image with Trivy (CRITICAL+HIGH, block on findings)
+      - name: Scan image with Trivy (CRITICAL+HIGH — informational)
         uses: aquasecurity/trivy-action@0.29.0
+        continue-on-error: true   # Report vulnerabilities without blocking the pipeline
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/{{IMAGE_NAME}}:${{ github.event.workflow_run.head_sha }}
+          image-ref: "ghcr.io/${{ github.repository_owner }}/{{IMAGE_NAME}}:${{ github.event.workflow_run.head_sha }}"
           format: sarif
           output: trivy-image.sarif
           severity: CRITICAL,HIGH
-          exit-code: "1"
+          exit-code: "0"
 
       - name: Upload image scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3

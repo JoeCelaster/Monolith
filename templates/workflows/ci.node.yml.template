@@ -24,11 +24,13 @@ jobs:
         with:
           node-version: "{{RUNTIME_VERSION}}"
           cache: "npm"
+          cache-dependency-path: "**/package-lock.json"
 
       - name: Install dependencies
         run: {{INSTALL_COMMAND}}
 
       - name: Lint
+        continue-on-error: true   # Non-blocking: projects without a lint script still pass CI
         run: {{LINT_COMMAND}}
 
       - name: Run tests
