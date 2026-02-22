@@ -3,7 +3,7 @@
   "name": "Node.js (Express)",
   "defaultPort": 3000,
   "runtimeVersion": "20",
-  "installCommand": "npm ci",
+  "installCommand": "npm install",
   "lintCommand": "npm run lint --if-present",
   "testCommand": "npm test --if-present",
   "buildCommand": "npm run build --if-present",

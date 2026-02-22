@@ -49,7 +49,12 @@ jobs:
       # ── 3. Install dependencies ───────────────────────────────────────────────
       - name: Install dependencies
         working-directory: ${{ env.WORK_DIR }}
-        run: {{INSTALL_COMMAND}}
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       # ── 4. Lint ───────────────────────────────────────────────────────────────
       - name: Lint
