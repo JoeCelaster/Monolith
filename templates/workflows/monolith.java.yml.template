@@ -56,7 +56,9 @@ jobs:
 
       # ── 4. Lint / static analysis ─────────────────────────────────────────────
       - name: Lint / static analysis
-        working-directory: ${{ env.WORK_DIR }}        continue-on-error: true   # Non-blocking: projects without checkstyle still pass        run: {{LINT_COMMAND}}
+        working-directory: ${{ env.WORK_DIR }}
+        continue-on-error: true
+        run: {{LINT_COMMAND}}
 
       # ── 5. Test ───────────────────────────────────────────────────────────────
       - name: Run tests
