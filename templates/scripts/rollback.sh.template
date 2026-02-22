@@ -22,11 +22,10 @@ fi
 # Pull the target image from the registry
 docker pull "${FULL_IMAGE}"
 
-# Detect env-file path based on hostname pattern
-if echo "$(hostname)" | grep -qiE 'prod|production'; then
-  ENV_FILE="/etc/{{APP_NAME}}/production.env"
-else
-  ENV_FILE="/etc/{{APP_NAME}}/staging.env"
+# ENV_FILE must be explicitly set by the calling workflow — never guess from hostname
+if [ -z "${ENV_FILE:-}" ]; then
+  echo "❌ ENV_FILE is required but was not set. Pass it from the deploy/rollback workflow." >&2
+  exit 1
 fi
 
 # Swap containers

@@ -151,7 +151,7 @@ async function main() {
   const imageName = projectName.toLowerCase().replace(/[^a-z0-9-_]/g, "");
 
   const vars = {
-    APP_NAME:          projectName,
+    APP_NAME:          imageName,   // sanitised: lowercase, no spaces — safe for container names & FS paths
     IMAGE_NAME:        imageName,
     PORT:              String(preset.defaultPort || 3000),
     RUNTIME_VERSION:   preset.runtimeVersion || "latest",
