@@ -170,10 +170,14 @@ async function main() {
 
   // ─── SIMPLE MODE: one file, one job, local Docker smoke test ─────────────
   if (mode === "simple") {
-    // Single unified workflow
+    // Pick the right template: Docker version has build+smoke-test steps;
+    // no-Docker version is a pure CI (install→lint→test→build) workflow.
+    const monolithTpl = useDocker
+      ? `workflows/monolith.${stack}.yml.template`
+      : `workflows/monolith.${stack}.nodocker.yml.template`;
     writeFile(
       path.join(workflowsOut, "monolith.yml"),
-      replacePlaceholders(readTemplate(`workflows/monolith.${stack}.yml.template`), vars)
+      replacePlaceholders(readTemplate(monolithTpl), vars)
     );
 
     // Dockerfile + .dockerignore (only when Docker is enabled)
@@ -191,7 +195,11 @@ async function main() {
     console.log("\n✅  Monolith scaffolded your simple CI/CD pipeline!\n");
     console.log("📁 Generated files:");
     console.log("  .github/workflows/");
-    console.log("    monolith.yml         ← single-file: CI → Docker build → smoke test");
+    if (useDocker) {
+      console.log("    monolith.yml         ← single-file: CI → Docker build → smoke test → rollback tag");
+    } else {
+      console.log("    monolith.yml         ← single-file: install → lint → test → build");
+    }
     if (useDocker) {
       console.log("  Dockerfile             ← multi-stage, non-root, HEALTHCHECK");
       console.log("  .dockerignore          ← excludes secrets, node_modules, .git…");
