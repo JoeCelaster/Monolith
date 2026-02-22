@@ -3,8 +3,8 @@ FROM node:{{RUNTIME_VERSION}}-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-# npm install works with or without a lockfile — no npm ci
-RUN npm install --omit=dev --no-audit --no-fund --ignore-scripts
+# Install ALL deps (including devDeps) — needed for build tools like typescript, vite, etc.
+RUN npm install --no-audit --no-fund
 
 COPY . .
 # Transpile/bundle if a build script exists, otherwise no-op
