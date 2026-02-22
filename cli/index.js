@@ -37,20 +37,24 @@ function makeExecutable(p) {
 }
 
 /**
- * Remove named YAML step blocks from a workflow template string.
- * Removes every block starting at a line matching `stepNamePattern`
- * up to (but not including) the next `      - name:` sibling step or end of job.
+ * Remove a named YAML step block and everything under it until the next sibling step.
+ * Works on indented step blocks (e.g. `      - name: Run migrations (staging)`).
  */
-function removeStepBlock(yaml, stepNamePattern) {
+function removeStepBlock(yaml, stepNameSubstring) {
   const lines = yaml.split("\n");
   const result = [];
   let skipping = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.trim().match(stepNamePattern)) {
+    const trimmed = line.trim();
+    // Start skipping when we hit a step whose name contains the target substring
+    if (!skipping && trimmed.startsWith("- name:") && trimmed.includes(stepNameSubstring)) {
       skipping = true;
-    } else if (skipping && line.match(/^      - (name:|uses:|run:)/)) {
+      continue;
+    }
+    // Stop skipping at the next sibling step (same indentation `      - name:`)
+    if (skipping && line.match(/^\s+- (name:|uses:|run:)/) && !trimmed.includes(stepNameSubstring)) {
       skipping = false;
     }
     if (!skipping) result.push(line);
@@ -120,10 +124,28 @@ async function main() {
     default: true,
   });
 
-  const migrationCommand = await input({
-    message: "Migration command (leave empty to skip migration step):",
-    default: "",
+  const mode = await select({
+    message: "Pipeline mode:",
+    choices: [
+      {
+        name: "Simple  — single monolith.yml file, one job, local Docker smoke test (great for demos/hackathons)",
+        value: "simple",
+      },
+      {
+        name: "Production — 5 workflow files, GHCR registry, SSH deploy, staging + production environments",
+        value: "production",
+      },
+    ],
+    pageSize: 2,
+    loop: false,
   });
+
+  const migrationCommand = mode === "production"
+    ? await input({
+        message: "Migration command (leave empty to skip migration step):",
+        default: "",
+      })
+    : "";
 
   // ─── Build variable map ──────────────────────────────────────────────────
   const imageName = projectName.toLowerCase().replace(/[^a-z0-9-_]/g, "");
@@ -146,14 +168,52 @@ async function main() {
   const workflowsOut = path.join(cwd, ".github", "workflows");
   const scriptsOut   = path.join(cwd, "scripts");
 
-  // ─── Generate: CI workflow (stack-specific for proper runtime setup) ─────
-  const ciTplName = `workflows/ci.${stack}.yml.template`;
+  // ─── SIMPLE MODE: one file, one job, local Docker smoke test ─────────────
+  if (mode === "simple") {
+    // Single unified workflow
+    writeFile(
+      path.join(workflowsOut, "monolith.yml"),
+      replacePlaceholders(readTemplate(`workflows/monolith.${stack}.yml.template`), vars)
+    );
+
+    // Dockerfile + .dockerignore (only when Docker is enabled)
+    if (useDocker) {
+      writeFile(
+        path.join(cwd, "Dockerfile"),
+        replacePlaceholders(readTemplate(`docker/Dockerfile.${stack}.template`), vars)
+      );
+      const dockerignorePath = path.join(cwd, ".dockerignore");
+      if (!fs.existsSync(dockerignorePath)) {
+        writeFile(dockerignorePath, readTemplate("docker/.dockerignore.template"));
+      }
+    }
+
+    console.log("\n✅  Monolith scaffolded your simple CI/CD pipeline!\n");
+    console.log("📁 Generated files:");
+    console.log("  .github/workflows/");
+    console.log("    monolith.yml         ← single-file: CI → Docker build → smoke test");
+    if (useDocker) {
+      console.log("  Dockerfile             ← multi-stage, non-root, HEALTHCHECK");
+      console.log("  .dockerignore          ← excludes secrets, node_modules, .git…");
+    }
+    console.log("\nℹ️  Working directory: set the WORK_DIR repository variable in");
+    console.log("   GitHub Settings → Variables if your project is in a sub-folder.");
+    console.log("\n➡️  Next steps:");
+    console.log("  1. git add .");
+    console.log('  2. git commit -m "chore: add Monolith CI/CD"');
+    console.log("  3. git push  —  workflow runs on every push to", prodBranch, "/", stagingBranch, "and PRs\n");
+    return;
+  }
+
+  // ─── PRODUCTION MODE: 5 workflow files + scripts + SSH deploy ────────────
+
+  // CI
   writeFile(
     path.join(workflowsOut, "ci.yml"),
-    replacePlaceholders(readTemplate(ciTplName), vars)
+    replacePlaceholders(readTemplate(`workflows/ci.${stack}.yml.template`), vars)
   );
 
-  // ─── Generate: Build workflow ─────────────────────────────────────────────
+  // Build
   const buildTplName = useDocker
     ? "workflows/build.docker.yml.template"
     : "workflows/build.basic.yml.template";
@@ -162,61 +222,53 @@ async function main() {
     replacePlaceholders(readTemplate(buildTplName), vars)
   );
 
-  // ─── Generate: Deploy workflow (strip migration blocks when not needed) ───
+  // Deploy — strip migration step blocks when no migration command was given
   let deployTpl = readTemplate("workflows/deploy.yml.template");
   if (!vars.MIGRATION_COMMAND) {
-    // Remove the "Run migrations (staging)" and "Run migrations (production)" step blocks
-    deployTpl = removeStepBlock(deployTpl, /^- name: Run migrations/);
+    deployTpl = removeStepBlock(deployTpl, "Run migrations");
   }
   writeFile(
     path.join(workflowsOut, "deploy.yml"),
     replacePlaceholders(deployTpl, vars)
   );
 
-  // ─── Generate: Rollback workflow ──────────────────────────────────────────
+  // Rollback
   writeFile(
     path.join(workflowsOut, "rollback.yml"),
     replacePlaceholders(readTemplate("workflows/rollback.yml.template"), vars)
   );
 
-  // ─── Generate: Security scan workflow ────────────────────────────────────
+  // Security scan
   writeFile(
     path.join(workflowsOut, "security-scan.yml"),
     replacePlaceholders(readTemplate("workflows/security-scan.yml.template"), vars)
   );
 
-  // ─── Generate: Shell scripts ──────────────────────────────────────────────
+  // Shell scripts
   const scripts = [
     ["scripts/deploy.sh.template",        "deploy.sh"      ],
     ["scripts/rollback.sh.template",      "rollback.sh"    ],
     ["scripts/health-check.sh.template",  "health-check.sh"],
   ];
-
   for (const [tplRel, outName] of scripts) {
     const destPath = path.join(scriptsOut, outName);
     writeFile(destPath, replacePlaceholders(readTemplate(tplRel), vars));
     makeExecutable(destPath);
   }
 
-  // ─── Generate: Dockerfile + .dockerignore ────────────────────────────────
+  // Dockerfile + .dockerignore
   if (useDocker) {
-    const dockerTplName = `docker/Dockerfile.${stack}.template`;
     writeFile(
       path.join(cwd, "Dockerfile"),
-      replacePlaceholders(readTemplate(dockerTplName), vars)
+      replacePlaceholders(readTemplate(`docker/Dockerfile.${stack}.template`), vars)
     );
-
-    // Only write .dockerignore if one doesn't already exist
     const dockerignorePath = path.join(cwd, ".dockerignore");
     if (!fs.existsSync(dockerignorePath)) {
-      writeFile(
-        dockerignorePath,
-        readTemplate("docker/.dockerignore.template")
-      );
+      writeFile(dockerignorePath, readTemplate("docker/.dockerignore.template"));
     }
   }
 
-  // ─── Summary ──────────────────────────────────────────────────────────────
+  // ─── Summary (production) ─────────────────────────────────────────────────
   console.log("\n✅  Monolith scaffolded your production CI/CD pipeline!\n");
   console.log("📁 Generated files:");
   console.log("  .github/workflows/");
@@ -246,8 +298,8 @@ async function main() {
 
   console.log("\n📋  Server setup (run once per server):");
   console.log(`  mkdir -p /opt/scripts/${imageName}`);
-  console.log(`  mkdir -p /etc/${projectName}`);
-  console.log(`  # Place staging.env / production.env in /etc/${projectName}/`);
+  console.log(`  mkdir -p /etc/${imageName}`);
+  console.log(`  # Place staging.env / production.env in /etc/${imageName}/`);
   console.log(`  # Copy deploy.sh & rollback.sh to /opt/scripts/${imageName}/`);
 
   console.log("\n➡️  Next steps:");
