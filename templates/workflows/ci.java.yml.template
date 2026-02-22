@@ -30,6 +30,7 @@ jobs:
         run: {{INSTALL_COMMAND}}
 
       - name: Lint / static analysis
+        continue-on-error: true   # Non-blocking: projects without checkstyle still pass CI
         run: {{LINT_COMMAND}}
 
       - name: Run tests

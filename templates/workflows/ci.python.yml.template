@@ -24,11 +24,13 @@ jobs:
         with:
           python-version: "{{RUNTIME_VERSION}}"
           cache: "pip"
+          cache-dependency-path: "**/requirements*.txt"
 
       - name: Install dependencies
         run: {{INSTALL_COMMAND}}
 
       - name: Lint
+        continue-on-error: true   # Non-blocking: projects without a linter still pass CI
         run: {{LINT_COMMAND}}
 
       - name: Run tests

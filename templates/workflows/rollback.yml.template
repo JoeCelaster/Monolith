@@ -33,6 +33,7 @@ jobs:
             export IMAGE_TAG=${{ github.event.inputs.image_tag }}
             export REGISTRY=ghcr.io/${{ github.repository_owner }}
             export IMAGE_NAME={{IMAGE_NAME}}
+            export ENV_FILE=/etc/{{APP_NAME}}/${{ github.event.inputs.environment }}.env
             bash /opt/scripts/{{APP_NAME}}/rollback.sh
 
       - name: Verify service is healthy after rollback

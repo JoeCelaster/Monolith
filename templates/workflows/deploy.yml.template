@@ -1,9 +1,9 @@
 name: Deploy
 
 on:
-  # Automatically triggered by the Build & Push workflow on prod/staging branches
+  # Triggered by either the Docker build workflow or the basic (non‑Docker) build workflow
   workflow_run:
-    workflows: ["Build & Push"]
+    workflows: ["Build & Push", "Build (Basic)"]
     branches:
       - "{{PROD_BRANCH}}"
       - "{{STAGING_BRANCH}}"
@@ -20,6 +20,11 @@ on:
         default: "staging"
         type: choice
         options: [staging, production]
+
+# Prevent concurrent deploys to the same branch — never cancel in-progress (let it finish)
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
   # ── Staging ─────────────────────────────────────────────────────────────────
@@ -97,6 +102,7 @@ jobs:
             export IMAGE_TAG=previous
             export REGISTRY=ghcr.io/${{ github.repository_owner }}
             export IMAGE_NAME={{IMAGE_NAME}}
+            export ENV_FILE=/etc/{{APP_NAME}}/staging.env
             bash /opt/scripts/{{APP_NAME}}/rollback.sh
 
   # ── Production ──────────────────────────────────────────────────────────────
@@ -174,4 +180,5 @@ jobs:
             export IMAGE_TAG=previous
             export REGISTRY=ghcr.io/${{ github.repository_owner }}
             export IMAGE_NAME={{IMAGE_NAME}}
+            export ENV_FILE=/etc/{{APP_NAME}}/production.env
             bash /opt/scripts/{{APP_NAME}}/rollback.sh
